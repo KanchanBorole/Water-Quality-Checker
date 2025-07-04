@@ -93,8 +93,10 @@ This is a Streamlit-based web application that uses machine learning to predict 
 
 ## Changelog
 
-- July 04, 2025. Initial setup
+- July 04, 2025. Initial setup with basic water quality analysis features
+- July 04, 2025. Enhanced UI with dark theme, interactive animations, and advanced visualizations
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+UI Preference: Colorful, interactive theme with animations and modern dark design.

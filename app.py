@@ -12,6 +12,15 @@ from data_handler import DataHandler
 from model_trainer import ModelTrainer
 from visualizations import create_correlation_heatmap, create_feature_distributions, create_prediction_gauge
 from utils import validate_input, get_water_quality_info
+from interactive_features import (
+    create_animated_water_drop, 
+    create_quality_score_animation, 
+    create_live_statistics_card,
+    create_prediction_confidence_bar,
+    add_notification,
+    create_notification_system,
+    notification_styles
+)
 
 # Page configuration
 st.set_page_config(
@@ -20,6 +29,124 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Custom CSS for enhanced styling
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(135deg, #00D4AA 0%, #2E8B57 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        text-align: center;
+        color: white;
+        box-shadow: 0 4px 15px rgba(0, 212, 170, 0.3);
+    }
+    
+    .metric-card {
+        background: linear-gradient(145deg, #1A2332 0%, #2D3B4A 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid #00D4AA;
+        margin: 0.5rem;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0, 212, 170, 0.2);
+    }
+    
+    .status-card {
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+        border-left: 4px solid #00D4AA;
+        background: linear-gradient(90deg, rgba(0, 212, 170, 0.1) 0%, rgba(26, 35, 50, 0.5) 100%);
+    }
+    
+    .prediction-result {
+        text-align: center;
+        padding: 2rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        font-size: 1.2rem;
+        font-weight: bold;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    .potable-result {
+        background: linear-gradient(135deg, #00D4AA 0%, #2E8B57 100%);
+        color: white;
+        border: 2px solid #00D4AA;
+    }
+    
+    .not-potable-result {
+        background: linear-gradient(135deg, #FF6B6B 0%, #CC5A5A 100%);
+        color: white;
+        border: 2px solid #FF6B6B;
+    }
+    
+    .parameter-info {
+        background: linear-gradient(145deg, #1A2332 0%, #2D3B4A 100%);
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        border-left: 3px solid #00D4AA;
+    }
+    
+    .sidebar .stSelectbox > label {
+        color: #00D4AA;
+        font-weight: bold;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #00D4AA 0%, #2E8B57 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 212, 170, 0.4);
+    }
+    
+    .animated-icon {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    
+    .feature-highlight {
+        background: linear-gradient(135deg, rgba(0, 212, 170, 0.1) 0%, rgba(46, 139, 87, 0.1) 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        border: 1px solid rgba(0, 212, 170, 0.3);
+        margin: 1rem 0;
+    }
+    
+    .data-quality-indicator {
+        display: inline-block;
+        padding: 0.3rem 0.8rem;
+        border-radius: 20px;
+        margin: 0.2rem;
+        font-size: 0.9rem;
+        font-weight: bold;
+    }
+    
+    .excellent { background: #00D4AA; color: white; }
+    .good { background: #2E8B57; color: white; }
+    .warning { background: #FFB347; color: black; }
+    .danger { background: #FF6B6B; color: white; }
+</style>
+""", unsafe_allow_html=True)
+
+# Add notification styles and interactive features
+st.markdown(notification_styles, unsafe_allow_html=True)
 
 # Initialize session state
 if 'prediction_history' not in st.session_state:
@@ -31,19 +158,47 @@ if 'model' not in st.session_state:
 if 'data_handler' not in st.session_state:
     st.session_state.data_handler = None
 
-# Title and description
-st.title("🚰 AI-Powered Water Quality Analyzer")
+# Enhanced Title and description with animation
 st.markdown("""
-This application uses machine learning to predict water potability based on chemical parameters.
-Upload your water quality data or use the built-in dataset to train models and make predictions.
-""")
+<div class="main-header">
+    <h1 class="animated-icon">🚰 AI-Powered Water Quality Analyzer</h1>
+    <p style="font-size: 1.1rem; margin-top: 1rem;">
+        Advanced machine learning technology to predict water safety and quality
+    </p>
+    <div style="margin-top: 1rem;">
+        <span class="data-quality-indicator excellent">🔬 Smart Analysis</span>
+        <span class="data-quality-indicator good">🤖 AI Predictions</span>
+        <span class="data-quality-indicator warning">📊 Interactive Charts</span>
+        <span class="data-quality-indicator danger">⚡ Real-time Results</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-# Sidebar for navigation
-st.sidebar.title("Navigation")
+# Enhanced Sidebar for navigation
+st.sidebar.markdown("""
+<div style="text-align: center; padding: 1rem; background: linear-gradient(135deg, #00D4AA 0%, #2E8B57 100%); border-radius: 10px; margin-bottom: 1rem;">
+    <h2 style="color: white; margin: 0;">🌊 Navigation</h2>
+</div>
+""", unsafe_allow_html=True)
+
 page = st.sidebar.selectbox(
     "Select Page",
-    ["🏠 Home", "📊 Data Analysis", "🤖 Model Training", "🔍 Prediction", "📈 Dashboard", "📋 History"]
+    ["🏠 Home", "📊 Data Analysis", "🤖 Model Training", "🔍 Prediction", "📈 Dashboard", "📋 History"],
+    help="Navigate through different sections of the water quality analyzer"
 )
+
+# Add interactive sidebar info
+st.sidebar.markdown("""
+<div class="feature-highlight">
+    <h4>💡 Quick Tips</h4>
+    <ul>
+        <li>Start with <strong>Data Analysis</strong> to explore your data</li>
+        <li>Train models in <strong>Model Training</strong></li>
+        <li>Make predictions in <strong>Prediction</strong> section</li>
+        <li>View results in <strong>Dashboard</strong></li>
+    </ul>
+</div>
+""", unsafe_allow_html=True)
 
 # Initialize data handler
 @st.cache_resource
@@ -57,33 +212,89 @@ if page == "🏠 Home":
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.header("About Water Quality Analysis")
-        st.markdown("""
-        ### Why Water Quality Matters
-        Access to clean drinking water is a fundamental human right. This AI tool helps predict whether water is safe to drink based on easily measurable chemical properties.
+        st.markdown(create_animated_water_drop(), unsafe_allow_html=True)
         
-        ### Parameters We Analyze
-        - **pH**: Acidity/alkalinity level (6.5-8.5 is ideal)
-        - **Hardness**: Calcium and magnesium content
-        - **Solids**: Total dissolved solids (TDS)
-        - **Chloramines**: Disinfectant levels
-        - **Sulfate**: Sulfate ion concentration
-        - **Conductivity**: Electrical conductivity
-        - **Organic Carbon**: Total organic carbon
-        - **Trihalomethanes**: Disinfection byproducts
-        - **Turbidity**: Water clarity measure
-        """)
+        st.markdown("""
+        <div class="feature-highlight">
+            <h2>🌊 About Water Quality Analysis</h2>
+            <h3>💡 Why Water Quality Matters</h3>
+            <p>Access to clean drinking water is a fundamental human right. This AI tool helps predict whether water is safe to drink based on easily measurable chemical properties.</p>
+            
+            <h3>🔬 Parameters We Analyze</h3>
+            <ul>
+                <li><strong>pH</strong>: Acidity/alkalinity level (6.5-8.5 is ideal)</li>
+                <li><strong>Hardness</strong>: Calcium and magnesium content</li>
+                <li><strong>Solids</strong>: Total dissolved solids (TDS)</li>
+                <li><strong>Chloramines</strong>: Disinfectant levels</li>
+                <li><strong>Sulfate</strong>: Sulfate ion concentration</li>
+                <li><strong>Conductivity</strong>: Electrical conductivity</li>
+                <li><strong>Organic Carbon</strong>: Total organic carbon</li>
+                <li><strong>Trihalomethanes</strong>: Disinfection byproducts</li>
+                <li><strong>Turbidity</strong>: Water clarity measure</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
-        st.header("Quick Stats")
+        st.markdown("""
+        <div class="feature-highlight">
+            <h3>📊 Quick Stats</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
         if data_handler.data is not None:
             total_samples = len(data_handler.data)
             potable_samples = data_handler.data['Potability'].sum()
-            st.metric("Total Samples", total_samples)
-            st.metric("Potable Samples", potable_samples)
-            st.metric("Potability Rate", f"{potable_samples/total_samples*100:.1f}%")
+            potability_rate = potable_samples/total_samples*100
+            
+            # Enhanced metrics with custom styling
+            col2a, col2b = st.columns(2)
+            with col2a:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h2 style="color: #00D4AA; margin: 0;">{total_samples}</h2>
+                    <p style="margin: 0;">Total Samples</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h2 style="color: #2E8B57; margin: 0;">{potable_samples}</h2>
+                    <p style="margin: 0;">Potable Samples</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2b:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h2 style="color: #FFB347; margin: 0;">{potability_rate:.1f}%</h2>
+                    <p style="margin: 0;">Potability Rate</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Water quality indicator
+                if potability_rate >= 70:
+                    quality_color = "#00D4AA"
+                    quality_text = "Excellent"
+                elif potability_rate >= 50:
+                    quality_color = "#2E8B57"
+                    quality_text = "Good"
+                else:
+                    quality_color = "#FF6B6B"
+                    quality_text = "Needs Attention"
+                
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h2 style="color: {quality_color}; margin: 0;">{quality_text}</h2>
+                    <p style="margin: 0;">Overall Quality</p>
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            st.info("Load data to see statistics")
+            st.markdown("""
+            <div class="status-card">
+                <p>🔄 Load data to see detailed statistics and insights</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 # Data Analysis Page
 elif page == "📊 Data Analysis":
@@ -285,16 +496,47 @@ elif page == "🔍 Prediction":
                             result_text = "✅ POTABLE" if prediction == 1 else "❌ NOT POTABLE"
                             confidence = max(prediction_proba) * 100
                             
-                            st.markdown(f"### {result_text}")
-                            st.markdown(f"**Confidence:** {confidence:.1f}%")
+                            # Enhanced prediction result with custom styling
+                            if prediction == 1:
+                                result_class = "potable-result"
+                                result_icon = "🟢"
+                                result_message = "Water is SAFE to drink!"
+                            else:
+                                result_class = "not-potable-result"
+                                result_icon = "🔴"
+                                result_message = "Water is NOT SAFE to drink!"
                             
-                            # Create gauge chart
+                            st.markdown(f"""
+                            <div class="prediction-result {result_class}">
+                                <div style="font-size: 3rem; margin-bottom: 1rem;">{result_icon}</div>
+                                <div style="font-size: 2rem; margin-bottom: 1rem;">{result_text}</div>
+                                <div style="font-size: 1.2rem; margin-bottom: 1rem;">{result_message}</div>
+                                <div style="font-size: 1.5rem;">Confidence: {confidence:.1f}%</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Create enhanced gauge chart
                             fig_gauge = create_prediction_gauge(confidence, prediction)
                             st.plotly_chart(fig_gauge, use_container_width=True)
                         
                         with col2:
                             st.markdown("### Parameter Analysis")
-                            st.markdown(get_water_quality_info(input_data))
+                            
+                            # Enhanced parameter analysis with custom styling
+                            parameter_info = get_water_quality_info(input_data)
+                            st.markdown(f"""
+                            <div class="parameter-info">
+                                {parameter_info.replace(chr(10), '<br>')}
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Add interactive parameter radar chart
+                            from visualizations import create_parameter_radar_chart
+                            fig_radar = create_parameter_radar_chart(input_data, data_handler.data)
+                            st.plotly_chart(fig_radar, use_container_width=True)
+                        
+                        # Enhanced confidence bar
+                        st.markdown(create_prediction_confidence_bar(confidence, prediction), unsafe_allow_html=True)
                         
                         # Add to history
                         prediction_record = {
@@ -304,6 +546,12 @@ elif page == "🔍 Prediction":
                             **input_data
                         }
                         st.session_state.prediction_history.append(prediction_record)
+                        
+                        # Add notification
+                        if prediction == 1:
+                            add_notification(f"✅ Water sample predicted as POTABLE with {confidence:.1f}% confidence", "success")
+                        else:
+                            add_notification(f"❌ Water sample predicted as NOT POTABLE with {confidence:.1f}% confidence", "warning")
                         
                         st.success("Prediction completed and saved to history!")
                         
@@ -380,7 +628,11 @@ elif page == "📈 Dashboard":
 
 # History Page
 elif page == "📋 History":
-    st.header("Prediction History")
+    st.header("📋 Prediction History")
+    
+    # Add notification system
+    with st.expander("🔔 Recent Notifications", expanded=False):
+        create_notification_system()
     
     if st.session_state.prediction_history:
         # Convert to DataFrame
