@@ -21,6 +21,7 @@ from interactive_features import (
     create_notification_system,
     notification_styles
 )
+from database_handler import DatabaseHandler
 
 # Page configuration
 st.set_page_config(
@@ -157,6 +158,8 @@ if 'model' not in st.session_state:
     st.session_state.model = None
 if 'data_handler' not in st.session_state:
     st.session_state.data_handler = None
+if 'db_handler' not in st.session_state:
+    st.session_state.db_handler = DatabaseHandler()
 
 # Enhanced Title and description with animation
 st.markdown("""
@@ -183,7 +186,7 @@ st.sidebar.markdown("""
 
 page = st.sidebar.selectbox(
     "Select Page",
-    ["🏠 Home", "📊 Data Analysis", "🤖 Model Training", "🔍 Prediction", "📈 Dashboard", "📋 History"],
+    ["🏠 Home", "📊 Data Analysis", "🤖 Model Training", "🔍 Prediction", "📈 Dashboard", "📋 History", "💾 Database"],
     help="Navigate through different sections of the water quality analyzer"
 )
 
@@ -403,6 +406,13 @@ elif page == "🤖 Model Training":
                     st.session_state.model = model
                     st.session_state.model_trained = True
                     st.session_state.model_trainer = model_trainer
+                    st.session_state.current_model_type = model_type
+                    
+                    # Save model performance to database
+                    hyperparams = params if params else {}
+                    st.session_state.db_handler.save_model_performance(
+                        model_type, metrics, hyperparams
+                    )
                     
                     st.success("Model trained successfully!")
                     
@@ -538,7 +548,13 @@ elif page == "🔍 Prediction":
                         # Enhanced confidence bar
                         st.markdown(create_prediction_confidence_bar(confidence, prediction), unsafe_allow_html=True)
                         
-                        # Add to history
+                        # Save to database
+                        model_type = getattr(st.session_state, 'current_model_type', 'Unknown')
+                        prediction_id = st.session_state.db_handler.save_prediction(
+                            input_data, prediction, confidence, model_type
+                        )
+                        
+                        # Add to session history (for backward compatibility)
                         prediction_record = {
                             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                             'prediction': 'Potable' if prediction == 1 else 'Not Potable',
@@ -553,7 +569,10 @@ elif page == "🔍 Prediction":
                         else:
                             add_notification(f"❌ Water sample predicted as NOT POTABLE with {confidence:.1f}% confidence", "warning")
                         
-                        st.success("Prediction completed and saved to history!")
+                        if prediction_id:
+                            st.success("Prediction completed and saved to database!")
+                        else:
+                            st.success("Prediction completed and saved to session history!")
                         
                     except Exception as e:
                         st.error(f"Error making prediction: {str(e)}")
@@ -634,7 +653,102 @@ elif page == "📋 History":
     with st.expander("🔔 Recent Notifications", expanded=False):
         create_notification_system()
     
-    if st.session_state.prediction_history:
+    # Toggle between session and database history
+    history_source = st.radio(
+        "Select History Source:",
+        ["💾 Database History", "🔄 Session History"],
+        horizontal=True
+    )
+    
+    if history_source == "💾 Database History":
+        # Get database history
+        db_history = st.session_state.db_handler.get_prediction_history()
+        
+        if not db_history.empty:
+            # Display summary
+            st.subheader("📊 Database Summary")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown(create_live_statistics_card(
+                    "Total Predictions", len(db_history), ""
+                ), unsafe_allow_html=True)
+            
+            with col2:
+                potable_count = len(db_history[db_history['prediction_label'] == 'Potable'])
+                st.markdown(create_live_statistics_card(
+                    "Potable Predictions", potable_count, ""
+                ), unsafe_allow_html=True)
+            
+            with col3:
+                avg_confidence = db_history['confidence'].mean()
+                st.markdown(create_live_statistics_card(
+                    "Avg Confidence", f"{avg_confidence:.1f}", "%"
+                ), unsafe_allow_html=True)
+            
+            # Display prediction history table
+            st.subheader("📋 Recent Predictions")
+            
+            # Filter options
+            col1, col2 = st.columns(2)
+            with col1:
+                prediction_filter = st.selectbox(
+                    "Filter by Prediction",
+                    ["All", "Potable", "Not Potable"]
+                )
+            
+            with col2:
+                model_filter = st.selectbox(
+                    "Filter by Model",
+                    ["All"] + list(db_history['model_type'].unique())
+                )
+            
+            # Apply filters
+            filtered_history = db_history.copy()
+            if prediction_filter != "All":
+                filtered_history = filtered_history[filtered_history['prediction_label'] == prediction_filter]
+            if model_filter != "All":
+                filtered_history = filtered_history[filtered_history['model_type'] == model_filter]
+            
+            # Display table
+            if not filtered_history.empty:
+                display_columns = ['timestamp', 'prediction_label', 'confidence', 'model_type', 'ph', 'hardness', 'turbidity']
+                st.dataframe(
+                    filtered_history[display_columns].head(50),
+                    use_container_width=True
+                )
+                
+                # Export options
+                st.subheader("📤 Export Data")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("📄 Export as CSV"):
+                        csv_data = st.session_state.db_handler.export_data('predictions', 'csv')
+                        if csv_data:
+                            st.download_button(
+                                label="Download CSV",
+                                data=csv_data,
+                                file_name=f"water_quality_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
+                
+                with col2:
+                    if st.button("📋 Export as JSON"):
+                        json_data = st.session_state.db_handler.export_data('predictions', 'json')
+                        if json_data:
+                            st.download_button(
+                                label="Download JSON",
+                                data=json_data,
+                                file_name=f"water_quality_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                mime="application/json"
+                            )
+            else:
+                st.info("No predictions match the selected filters.")
+        else:
+            st.info("No predictions found in database. Make some predictions first!")
+    
+    elif history_source == "🔄 Session History" and st.session_state.prediction_history:
         # Convert to DataFrame
         history_df = pd.DataFrame(st.session_state.prediction_history)
         
@@ -674,6 +788,178 @@ elif page == "📋 History":
     
     else:
         st.info("No predictions made yet. Use the Prediction page to make predictions.")
+
+# Database Page
+elif page == "💾 Database":
+    st.header("💾 Database Management")
+    
+    # Database statistics
+    stats = st.session_state.db_handler.get_statistics()
+    
+    st.subheader("📊 Database Overview")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(create_live_statistics_card(
+            "Total Predictions", stats.get('total_predictions', 0), ""
+        ), unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(create_live_statistics_card(
+            "Potable Samples", stats.get('potable_predictions', 0), ""
+        ), unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(create_live_statistics_card(
+            "Avg Confidence", f"{stats.get('average_confidence', 0):.1f}", "%"
+        ), unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(create_live_statistics_card(
+            "Datasets Stored", stats.get('total_datasets', 0), ""
+        ), unsafe_allow_html=True)
+    
+    # Database operations
+    st.subheader("🔧 Database Operations")
+    
+    tab1, tab2, tab3 = st.tabs(["📈 Model Performance", "📁 Dataset Management", "🛠️ Database Tools"])
+    
+    with tab1:
+        st.subheader("Model Performance History")
+        performance_history = st.session_state.db_handler.get_model_performance_history()
+        
+        if not performance_history.empty:
+            # Display performance metrics chart
+            fig_performance = px.line(
+                performance_history,
+                x='training_timestamp',
+                y=['accuracy', 'precision_score', 'recall', 'f1_score'],
+                title="Model Performance Over Time",
+                color_discrete_sequence=['#00D4AA', '#2E8B57', '#FFB347', '#FF6B6B']
+            )
+            
+            fig_performance.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='white'),
+                title_font=dict(size=16, color='#00D4AA')
+            )
+            
+            st.plotly_chart(fig_performance, use_container_width=True)
+            
+            # Display performance table
+            st.dataframe(
+                performance_history[['model_type', 'accuracy', 'precision_score', 'recall', 'f1_score', 'training_timestamp']].head(20),
+                use_container_width=True
+            )
+        else:
+            st.info("No model performance data available. Train some models first!")
+    
+    with tab2:
+        st.subheader("Dataset Management")
+        
+        # Upload new dataset
+        with st.expander("📤 Upload New Dataset", expanded=False):
+            dataset_name = st.text_input("Dataset Name")
+            dataset_description = st.text_area("Dataset Description")
+            uploaded_file = st.file_uploader("Choose CSV file", type=['csv'])
+            
+            if st.button("Save Dataset to Database") and uploaded_file and dataset_name:
+                try:
+                    data = pd.read_csv(uploaded_file)
+                    dataset_id = st.session_state.db_handler.save_dataset(
+                        dataset_name, data, dataset_description
+                    )
+                    if dataset_id:
+                        st.success(f"Dataset '{dataset_name}' saved successfully!")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Error saving dataset: {str(e)}")
+        
+        # List saved datasets
+        saved_datasets = st.session_state.db_handler.get_datasets()
+        
+        if not saved_datasets.empty:
+            st.subheader("Saved Datasets")
+            for _, dataset in saved_datasets.iterrows():
+                with st.expander(f"📊 {dataset['name']} ({dataset['num_records']} records)"):
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.write(f"**Description:** {dataset['description']}")
+                        st.write(f"**Upload Date:** {dataset['upload_timestamp']}")
+                        st.write(f"**File Size:** {dataset['file_size']} bytes")
+                        st.write(f"**Records:** {dataset['num_records']}")
+                    
+                    with col2:
+                        if st.button(f"Load Dataset", key=f"load_{dataset['id']}"):
+                            loaded_data = st.session_state.db_handler.load_dataset(dataset['id'])
+                            if loaded_data is not None:
+                                # Update the data handler with loaded data
+                                data_handler.load_custom_data(loaded_data)
+                                st.success(f"Dataset '{dataset['name']}' loaded successfully!")
+                                st.rerun()
+        else:
+            st.info("No datasets saved in database.")
+    
+    with tab3:
+        st.subheader("Database Tools")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 🔄 Data Management")
+            
+            if st.button("📊 Refresh Statistics"):
+                st.rerun()
+            
+            st.markdown("### 📤 Export Options")
+            
+            if st.button("📄 Export All Predictions"):
+                csv_data = st.session_state.db_handler.export_data('predictions', 'csv')
+                if csv_data:
+                    st.download_button(
+                        label="Download Predictions CSV",
+                        data=csv_data,
+                        file_name=f"all_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+            
+            if st.button("📈 Export Model Performance"):
+                csv_data = st.session_state.db_handler.export_data('model_performance', 'csv')
+                if csv_data:
+                    st.download_button(
+                        label="Download Performance CSV",
+                        data=csv_data,
+                        file_name=f"model_performance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+        
+        with col2:
+            st.markdown("### 🔗 Database Connection")
+            
+            # Test database connection
+            if st.button("🔍 Test Connection"):
+                try:
+                    with st.session_state.db_handler.get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT version();")
+                        version = cursor.fetchone()[0]
+                        st.success(f"✅ Database connected successfully!")
+                        st.info(f"PostgreSQL Version: {version}")
+                except Exception as e:
+                    st.error(f"❌ Database connection failed: {str(e)}")
+            
+            st.markdown("### ℹ️ Database Info")
+            st.info(f"""
+            - Host: {st.session_state.db_handler.host}
+            - Port: {st.session_state.db_handler.port}
+            - Database: {st.session_state.db_handler.database}
+            - User: {st.session_state.db_handler.user}
+            """)
+            
+            st.markdown("### ⚠️ Warning")
+            st.warning("Database operations are permanent. Make sure to backup important data before making changes.")
 
 # Footer
 st.markdown("---")

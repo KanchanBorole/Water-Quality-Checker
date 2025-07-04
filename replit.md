@@ -95,6 +95,7 @@ This is a Streamlit-based web application that uses machine learning to predict 
 
 - July 04, 2025. Initial setup with basic water quality analysis features
 - July 04, 2025. Enhanced UI with dark theme, interactive animations, and advanced visualizations
+- July 04, 2025. Added PostgreSQL database integration for persistent data storage
 
 ## User Preferences
 
